@@ -1,4 +1,4 @@
-import { Controller, Post, Req, Res, Logger } from '@nestjs/common';
+import { Controller, Post, Req, Res, Logger, Get, HttpStatus } from '@nestjs/common';
 import axios from 'axios';
 
 @Controller('gitlab')
@@ -6,19 +6,28 @@ export class GitlabController {
   private readonly BOT_TOKEN = process.env.BOT_TOKEN;
   private readonly CHAT_ID = process.env.CHAT_ID;
   private readonly MY_USERNAME = process.env.MY_USERNAME;
+  private readonly SECRET_TOKEN = process.env.MY_SUPER_SECRET;
   private readonly logger = new Logger(GitlabController.name);
 
   @Post()
   async handleWebhook(@Req() req, @Res() res) {
+    const incomingToken = req.headers['x-gitlab-token'];
     const data = req.body;
-    this.logger.log(`USER: ${this.MY_USERNAME}`)
-    // Только события Merge Request
+
+    if (!incomingToken || incomingToken !== this.SECRET_TOKEN) {
+      return res
+        .status(HttpStatus.FORBIDDEN)
+        .send('Invalid secret token');
+    }
+    this.logger.log(`USER: ${this.MY_USERNAME}`);
+
     if (data.object_kind === 'merge_request') {
       const mr = data.object_attributes;
       const reviewers = data.reviewers || [];
 
-      // Проверяем: вас назначили reviewer?
-      const assignedToMe = reviewers.some(r => r.username === this.MY_USERNAME);
+      const assignedToMe = reviewers.some(
+        (r) => r.username === this.MY_USERNAME,
+      );
 
       if (assignedToMe) {
         const title = mr.title;
@@ -37,13 +46,37 @@ export class GitlabController {
             params: {
               chat_id: this.CHAT_ID,
               text,
-              parse_mode: 'Markdown'
-            }
-          }
+              parse_mode: 'Markdown',
+            },
+          },
         );
       }
     }
 
     return res.status(200).send('OK');
   }
+/*
+  @Get('test')
+  async test(@Req() req, @Res() res) {
+    // console.log(process.env)
+    const text =
+      `📢 *Вас назначили ревьюером!*\n\n` +
+      `*Test*\n` +
+      `Автор: \`Anton\`\n\n` +
+      `!!link!!`;
+
+    await axios.get(
+      `https://api.telegram.org/bot${this.BOT_TOKEN}/sendMessage`,
+      {
+        params: {
+          chat_id: this.CHAT_ID,
+          text,
+          parse_mode: 'Markdown',
+        },
+      },
+    );
+
+    return res.status(200).send('OK');
+  }
+*/
 }
